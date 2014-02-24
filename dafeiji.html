@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+
+		<!-- Always force latest IE rendering engine (even in intranet) & Chrome Frame
+		Remove this if you use the .htaccess -->
+		<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+
+		<title>hitPlain</title>
+		<meta name="description" content="" />
+		<meta name="author" content="Minjur" />
+		<!-- Replace favicon.ico & apple-touch-icon.png in the root of your domain and delete these references -->
+		<link rel="shortcut icon" href="/favicon.ico" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="stylesheet" type="text/css" href="css/common.css" />
+		<script type="text/javascript" src="js/jquery.js" ></script>
+		<script type="text/javascript" src="js/tween.js" ></script>
+		<script type="text/javascript" src="js/timer.js" ></script>
+		<script type="text/javascript" src="js/aniQueue.js" ></script>
+	</head>
+	<body>
+		<div id="page">
+			<div id="gameFrame" style="height:400px;width:320px;margin:20px auto;border:1px red solid;">
+				<canvas id="canvas" width="320" height="400"></canvas>
+			</div>
+		</div>
+		<script type="text/javascript">
+		/**
+		 *  自由的定义自己的 打飞机游戏
+		 */
+		var $canvas = $('#canvas'),
+			canvas = $canvas[0],
+			ctx = canvas.getContext('2d'),
+			W = canvas.width,
+			H = canvas.height,
+			isOver = false,
+			isPause = false;
+		var mlist = [], clist = [], blist = [];	
+		var coins = 0;
+		var keys = {},
+			plain = {		//自己的飞机设定
+				tp: 'plain',
+				w: 29,
+				h: 50,
+				l: (W - 29) / 2,
+				t: H - 50,
+				shape: [
+					{
+						w: 5,
+						h: 15,
+						l: 0,
+						t: 30
+					},
+					{
+						w: 6,
+						h: 25,
+						l: 5,
+						t: 25
+					},
+					{
+						w: 7,
+						h: 40,
+						l: 11,
+						t: 0
+					},
+					{
+						w: 6,
+						h: 25,
+						l: 18,
+						t: 25
+					},
+					{
+						w: 5,
+						h: 15,
+						l: 24,
+						t: 30
+					}
+				],
+				style: 'red',
+				bullet: 'type-1'
+			},
+			bullet = {
+				'type-1': {}
+			};
+		var army = {		//敌人的飞机设定. 可以自由添加
+			't-0': {
+				tp: 'army',
+				shape: [
+					{
+						w: 2,
+						h: 3,
+						l: 0,
+						t: 1
+					},
+					{
+						w: 4,
+						h: 8,
+						l: 2,
+						t: 0
+					},
+					{
+						w: 2,
+						h: 3,
+						l: 6,
+						t: 1
+					}
+				],
+				style: '#000',
+				heart: 1,
+				value: 1,
+				w: 8,
+				h: 8,
+				t: -8,
+				l: 0
+			},
+			't-1': {
+				tp: 'army',
+				shape: [
+					{
+						w: 5,
+						h: 20,
+						l: 0,
+						t: 0
+					},
+					{
+						w: 30,
+						h: 15,
+						l: 5,
+						t: 0
+					},
+					{
+						w: 5,
+						h: 20,
+						l: 35,
+						t: 0
+					},
+					{
+						w: 16,
+						h: 15,
+						l: 12,
+						t: 15
+					},
+					{
+						w: 20,
+						h: 10,
+						l: 10,
+						t: 30
+					}
+				],
+				style: '#000',
+				heart: 5,
+				value: 5,
+				w: 40,
+				h: 40,
+				t: -40,
+				l: 0
+			},
+			't-2': {
+				heart: 20,
+				value: 20
+			}
+		};
+		mlist.push(plain);
+		function _checkImpact(a, b) {		//矩形碰撞检测
+			return ((a.l < b.l && a.l + a.w > b.l) && (
+				(a.t < b.t && a.t + a.h > b.t) ||
+				(a.t >= b.t && a.t < b.t + b.h)
+			)) || ((a.l >= b.l && a.l < b.l + b.w) && (
+				(a.t < b.t && a.t + a.h > b.t) ||
+				(a.t >= b.t && a.t < b.t + b.h)
+			));
+		}
+		function _drawShape(obj) {			//绘制矩形
+			var i = 0, sp = obj.shape, ni = sp.length,
+				l = obj.l, t = obj.t;
+			for (; i < ni; i++) {
+				var _ = sp[i];
+				ctx.fillStyle = obj.style;
+				ctx.fillRect(l + _.l, t + _.t, _.w, _.h);
+			}
+		}	
+		function _calPlainPos(dir) {		//自己的飞机移动操作.
+			switch(dir) {
+			case 'l':
+				if (plain.l - 2 >= -8) {plain.l -= 2;}
+				break;
+			case 'r':
+				if (plain.l + plain.w + 2 <= W + 8) {plain.l += 2;}
+				break;
+			case 't':
+				if (plain.t - 2 >= 0) {plain.t -= 2;}
+				break;
+			case 'b':
+				if (plain.t + plain.h + 2 <= H) {plain.t += 2;}
+				break;	
+			}
+		}
+		function _rePosPlain() {			//检测&执行自己的飞机移动操作.
+			if (keys[37]) {
+				_calPlainPos('l');
+			} else if (keys[39]) {
+				_calPlainPos('r');
+			}
+			if (keys[38]) {
+				_calPlainPos('t');
+			} else if (keys[40]) {
+				_calPlainPos('b');
+			}
+		}
+		function _keyup(e) {				//绑定keyup.
+			var k = e.keyCode;
+			keys[k] = false;
+			if (k === 32) {					//空格时 暂停/继续 游戏
+				if (isPause) {
+					isPause = false;
+					timer.goon();
+				} else {
+					isPause = true;
+					timer.pause();
+					ctx.save();
+					ctx.font = 'bold 28px Arial';
+					ctx.fillStyle = '#000';
+					ctx.textBaseline = 'top';
+					ctx.fillText('Pause', (W - 80) / 2, (H - 28 ) / 2);
+					ctx.restore();
+				}
+			}
+		}
+		function _keydown(e) {				//绑定keydown
+			var k = e.keyCode;
+			keys[k] = true;
+		}
+		function _createBullet(type) {		//飞机子弹设定
+			return {
+				tp: 'bullet',
+				w: 2,
+				h: 2,
+				l: plain.l + (plain.w - 2) / 2,
+				t: (plain.t - 2),
+				shape: [
+					{
+						l: 0,
+						t: 0,
+						w: 2,
+						h: 2
+					}
+				],
+				style: 'green',
+				incY: -3
+			};
+		}
+		function _createCloud() {			//背景云设计
+			var ran = Math.random, floor = Math.floor,
+				w = floor(ran() * 30) + 10,
+				h = floor(ran() * 30) + 10;
+			return {
+				l: floor(ran() * (W - w)),
+				t: -h,
+				w: w,
+				h: h,
+				incY: floor(ran() * 2) + 1,
+				style: '#333'
+			};
+		}
+		function _createArmy(tp) {			//创造敌机
+			var o = $.extend({}, army[tp]), floor = Math.floor, ran = Math.random;
+			o.l = floor(ran() * (W - o.w));
+			o.incY= floor(ran() * 2) + 1;
+			return o;
+		}
+		function _loopCheckImpact(o) {		//循环碰撞检测
+			var i = 0, j, ml = mlist, ni = ml.length, nj, res;
+			for (; i < ni; i++) {
+				var _ = ml[i];
+				if (_.tp === o.tp || !_checkImpact(o, _)) {
+					continue;
+				}
+				var impact = false, meS = o.shape, heS = _.shape, z = 0, nz = meS.length;
+				for (; z < nz; z++) {
+					var meO = {
+						l: o.l + meS[z].l,
+						t: o.t + meS[z].t,
+						w: meS[z].w,
+						h: meS[z].h
+					};
+					for (j = 0, nj = heS.length; j < nj; j++) {
+						var heO = {
+							l: _.l + heS[j].l,
+							t: _.t + heS[j].t,
+							w: heS[j].w,
+							h: heS[j].h
+						};
+						if (_checkImpact(meO, heO)) {
+							return _;
+						}
+					}
+				}
+			}
+			return false;
+		}
+		function bong(o) {					//爆炸效果设定
+			var q = {
+				idx: 0,
+				time: 5,
+				l: o.l,
+				t: o.t,
+				w: o.w,
+				h: o.h,
+				_l: - o.w,
+				_t: - o.h,
+				_w: o.w * 2,
+				_h: o.h * 2
+			};
+			blist.push(q);
+		}
+		timer.attach('hitPlain', function() {}, null, 2);		// 以 2 * 16ms 的时间执行hitPlain
+		timer.attach('hitPlain.cal', function() {});			// 计算部分
+		timer.attach('hitPlain.cal.cloud', function() {			// 背景云的计算
+			var i = 0, cl = clist, ni = cl.length;
+			for (; i < ni; i++) {
+				if (isOver) return;
+				var _ = cl[i];
+				_.t += _.incY;
+				if (_.t > H) {									//超出边界将移除
+					cl.splice(i, 1);
+					i--;
+					ni--;
+				}
+			}
+		});
+		timer.attach('hitPlain.cal.mList', function() {			//所有移动物体计算
+			var i = 0, ml = mlist, ni = ml.length;
+			for (; i < ni; i++) {
+				if (isOver) return;
+				var _ = ml[i], me, impacter;
+				if (_.tp === 'plain') {
+					me = _;
+				} else {
+					me = $.extend({}, _);
+					me.t += _.incY;
+				}
+				impacter = _loopCheckImpact(me)
+				if (impacter) {
+					if (_.tp === 'plain') {						//检测到自己的飞机, 则游戏结束
+						bong(_);
+						isOver = true;
+						ml.splice(i, 1);
+						i--;
+						ni--;
+						timer.attach('gameover', function() {
+							alert('game over');
+							timer.detach('gameover');
+							timer.stop();
+						}, null, 20);
+						return;
+					}
+					if (_.tp === 'bullet') {					//检测到子弹, 则子弹消失, 且对方飞机血量-1
+						impacter.heart -= 1;
+						ml.splice(i, 1);
+						i--;
+						ni--;
+						continue;
+					}
+				}
+				if (_.tp && _.tp === 'plain') {					//自己的飞机不进行下面的操作
+					continue;
+				}
+				if (_.tp === 'army' && _.heart <= 0) {			//敌人飞机血量<=0 则消失且爆炸
+					coins += _.value;
+					bong(_);
+					ml.splice(i, 1);
+					i--;
+					ni--;
+					continue;
+				}
+				_.t += _.incY;									//移动敌人的飞机/自己的子弹, 超出边界则消失
+				if (_.incY < 0) {
+					if (_.t - _.h < 0) {
+						ml.splice(i, 1);
+						i--;
+						ni --;
+					}
+					continue;
+				} else {
+					if (_.t > H) {
+						ml.splice(i, 1);
+						i--;
+						ni--;
+					}
+					continue;
+				}
+			}
+		});
+		timer.attach('hitPlain.cal.plain', function() {			//检测键盘控制飞机移动事件并且执行
+			if (isOver) return;
+			_rePosPlain();
+		});
+		timer.attach('hitPlain.draw', function() {				//绘图开始, -- 清空画布
+			ctx.clearRect(0, 0, W, H);
+		});
+		timer.attach('hitPlain.draw.cloud', function() {		//绘制云
+			var i = 0, cl = clist, ni = cl.length;
+			for (; i < ni; i++) {
+				var _ = cl[i];
+				ctx.save();
+				ctx.globalAlpha = 0.15;
+				ctx.fillStyle = _.style;
+				ctx.fillRect(_.l, _.t, _.w, _.h);
+				ctx.restore();
+			}
+		});
+		timer.attach('hitPlain.draw.mlist', function() {		//绘制所有移动物体
+			var i = 0, ml = mlist, ni = ml.length;
+			for (; i < ni; i++) {
+				_drawShape(ml[i]);
+			}
+		});
+		timer.attach('hitPlain.draw.coins', function() {		//绘制当前分数
+			if (isOver) return;
+			ctx.save();
+			ctx.globalAlpha = 0.85;
+			ctx.font = 'bold 14px Arial';
+			ctx.fillStyle = '#000';
+			ctx.textBaseline = 'top';
+			ctx.fillText('Coins: ' + coins, 20, 20);
+			ctx.restore();
+		});
+		timer.attach('hitPlain.draw.bong', function() {			//绘制爆炸动画效果
+			var i = 0, bl = blist, ni = bl.length, easeIn = Tween.Quad.easeIn;
+			for (; i < ni; i++) {
+				var _ = bl[i];
+				ctx.save();
+				ctx.globalAlpha = 0.75;
+				ctx.fillStyle = 'pink';
+				ctx.fillRect(easeIn(_.idx, _.l, _._l, _.time), easeIn(_.idx, _.t, _._t, _.time), easeIn(_.idx, _.w, _._w, _.time), easeIn(_.idx, _.h, _._h, _.time));
+				ctx.restore();
+				_.idx ++;
+				if (_.idx > _.time) {							//动画结束则消除
+					bl.splice(i, 1);
+					i--;
+					ni--;
+				}
+			}
+		});
+		timer.attach('bullet', function() {						//生成子弹,  时间可以自己调控
+			if (isOver) return;
+			mlist.push(_createBullet());
+		}, null, 20);
+		timer.attach('cloud', function() {						//随机生成背景云, 时间/速度可调控
+			if (isOver) return;
+			Math.floor(Math.random() * 3) % 2 === 0 && clist.push(_createCloud());
+		}, null, 240);
+		timer.attach('army', function() {						//随机生成敌机, 时间/速率/概率 等等均可调控.
+			if (isOver) return;
+			if (coins < 10) {
+				mlist.push(_createArmy('t-0'));
+			} else if (coins > 10 && coins < 30) {
+				mlist.push(_createArmy(Math.floor(Math.random() * 4) % 2 === 0 ? 't-1' : 't-0'));
+			} else {
+				mlist.push(_createArmy(Math.floor(Math.random() * 3) % 2 === 0 ? 't-1' : 't-0'));
+			}
+		}, null, 120);
+		$(document.body).keydown(_keydown).keyup(_keyup);		//键盘事件的绑定.
+		</script>
+	</body>
+</html>
